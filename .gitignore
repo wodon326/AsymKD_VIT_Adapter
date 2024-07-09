@@ -1,0 +1,8 @@
+*.pth
+*.pth.gz
+runs/
+AsymKD_inference_input/
+AsymKD_inference_result/
+Depth_Anything_inference_result/
+debug*
+*.txt
