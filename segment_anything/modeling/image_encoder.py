@@ -112,7 +112,7 @@ class ImageEncoderViT(nn.Module):
             x = x + self.pos_embed
 
         seg_get_layer_num = 4
-        seg_max_layer_num = 24
+        seg_max_layer_num = 12
         seg_intermediate_layers = []
 
         for idx,blk in enumerate(self.blocks):

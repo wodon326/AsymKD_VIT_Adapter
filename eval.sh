@@ -1,1 +1,1 @@
-CUDA_VISIBLE_DEVICES=7 python AsymKD_evaluate.py
+CUDA_VISIBLE_DEVICES=6 python AsymKD_evaluate.py

@@ -264,15 +264,15 @@ def train(rank, world_size, args):
         torch.cuda.empty_cache()
         DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-        checkpoint = "sam_vit_l_0b3195.pth"
-        model_type = "vit_l"
+        checkpoint = "sam_vit_b_01ec64.pth"
+        model_type = "vit_b"
         segment_anything = sam_model_registry[model_type](checkpoint=checkpoint).to(rank).eval()
         segment_anything_predictor = SamPredictor(segment_anything)
         for child in segment_anything.children():
             ImageEncoderViT = child
             break
         AsymKD_VIT = AsymKD_DepthAnything(ImageEncoderViT = ImageEncoderViT).to(rank)
-        restore_ckpt = 'depth_anything_vitl14.pth'
+        restore_ckpt = 'depth_anything_vitb14.pth'
         #restore_ckpt = 'checkpoints/149981_epoch_AsymKD.pth'
         if restore_ckpt is not None:
             assert restore_ckpt.endswith(".pth")

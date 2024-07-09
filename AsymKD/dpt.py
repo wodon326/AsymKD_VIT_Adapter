@@ -28,7 +28,7 @@ def _make_fusion_block(features, use_bn, size = None):
 
 
 class AsymKD_DPTHead(nn.Module):
-    def __init__(self, nclass, in_channels, features=256, use_bn=False, out_channels=[256, 512, 1024, 1024], use_clstoken=False):
+    def __init__(self, nclass, in_channels, features=128, use_bn=False, out_channels=[96, 192, 384, 768], use_clstoken=False):
         super(AsymKD_DPTHead, self).__init__()
         
         self.nclass = nclass
@@ -207,13 +207,12 @@ class AsymKD_DPTHead(nn.Module):
         
         
 class AsymKD_DepthAnything(nn.Module):
-    def __init__(self, ImageEncoderViT, features=256, out_channels=[256, 512, 1024, 1024], use_bn=False, use_clstoken=False, localhub=True):
+    def __init__(self, ImageEncoderViT, features=128, out_channels=[96, 192, 384, 768], use_bn=False, use_clstoken=False, localhub=True):
         super(AsymKD_DepthAnything, self).__init__()
         
         
-        self.DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-        encoder = 'vitl' # can also be 'vitb' or 'vitl'
-        self.depth_anything = DepthAnything.from_pretrained('LiheYoung/depth_anything_{}14'.format(encoder)).to(self.DEVICE).eval()
+        encoder = 'vitb' # can also be 'vitb' or 'vitl'
+        self.depth_anything = DepthAnything.from_pretrained('LiheYoung/depth_anything_{}14'.format(encoder)).eval()
         
 
         for param in self.depth_anything.parameters():
@@ -226,8 +225,8 @@ class AsymKD_DepthAnything(nn.Module):
         for i, (name, param) in enumerate(self.ImageEncoderViT.named_parameters()):
             param.requires_grad = False
 
-        #dim = 768 #= self.pretrained.blocks[0].attn.qkv.in_features
-        dim = 1024
+        dim = 768 #= self.pretrained.blocks[0].attn.qkv.in_features
+        #dim = 1024
 
         self.depth_head = AsymKD_DPTHead(1, dim, features, use_bn, out_channels=out_channels, use_clstoken=use_clstoken)
         

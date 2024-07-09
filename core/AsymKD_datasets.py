@@ -289,7 +289,7 @@ class FallingThings(StereoDataset):
             self.disparity_list += [ disp ]
 
 class TartanAir(StereoDataset): #../../data
-    def __init__(self, seg_any_predictor:SamPredictor, aug_params=None, root='../data/AsymKD', keywords=[]):
+    def __init__(self, seg_any_predictor:SamPredictor, aug_params=None, root='../../data/AsymKD', keywords=[]):
         super().__init__(seg_any_predictor, aug_params, reader=frame_utils.readDispTartanAir)
         assert os.path.exists(root)
         
@@ -312,7 +312,7 @@ class TartanAir(StereoDataset): #../../data
                 quit()
 
 class KITTI(StereoDataset):
-    def __init__(self, seg_any_predictor:SamPredictor, aug_params=None, root='../data/stereo/kitti/kitti2015', image_set='training'):
+    def __init__(self, seg_any_predictor:SamPredictor, aug_params=None, root='../../data/kitti/kitti2015', image_set='training'):
         super(KITTI, self).__init__(seg_any_predictor, aug_params, sparse=True, reader=frame_utils.readDispKITTI)
         assert os.path.exists(root)
 
@@ -334,7 +334,7 @@ class KITTI(StereoDataset):
                 quit()
 
 class MegaDepth(StereoDataset):
-    def __init__(self, seg_any_predictor:SamPredictor, aug_params=None, root='../data/AsymKD/MegaDepth'):
+    def __init__(self, seg_any_predictor:SamPredictor, aug_params=None, root='../../data/AsymKD/MegaDepth'):
         super().__init__(seg_any_predictor, aug_params, sparse=True, reader=frame_utils.readDispMegaDepth)
         assert os.path.exists(root)
 
@@ -349,7 +349,7 @@ class MegaDepth(StereoDataset):
                 quit()
 
 class HRWSI(StereoDataset):
-    def __init__(self, seg_any_predictor:SamPredictor, aug_params=None, root='../data/AsymKD/HRWSI'):
+    def __init__(self, seg_any_predictor:SamPredictor, aug_params=None, root='../../data/AsymKD/HRWSI'):
         super().__init__(seg_any_predictor, aug_params, sparse=True, reader=frame_utils.readDispHRWSI)
         assert os.path.exists(root)
 
@@ -364,7 +364,7 @@ class HRWSI(StereoDataset):
                 quit()
 
 class BlendedMVS(StereoDataset):
-    def __init__(self, seg_any_predictor:SamPredictor, aug_params=None, root='../data/AsymKD/BlendedMVS'):
+    def __init__(self, seg_any_predictor:SamPredictor, aug_params=None, root='../../data/AsymKD/BlendedMVS'):
         super().__init__(seg_any_predictor, aug_params, sparse=True, reader=frame_utils.readDispBlendedMVS)
         assert os.path.exists(root)
 

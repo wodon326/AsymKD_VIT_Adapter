@@ -172,29 +172,29 @@ def validate_kitti(model, seg_any_predictor: SamPredictor, mixed_prec=False):
             print(f"KITTI Iter {val_id+1} out of {len(val_dataset)}. {metrics}")
 
 
-        '''Inference 결과 저장 코드'''
-        outdir = './AsymKD_inference_result'
-        if metrics['a1']>=0.9:
-            flow_pr = flow_pr.squeeze()
-            flow_pr = (flow_pr - flow_pr.min()) / (flow_pr.max() - flow_pr.min()) * 255.0
-            flow_pr = flow_pr.cpu().numpy().astype(np.uint8)
-            flow_pr = cv2.applyColorMap(flow_pr, cv2.COLORMAP_INFERNO)
+        # '''Inference 결과 저장 코드'''
+        # outdir = './AsymKD_inference_result'
+        # if metrics['a1']>=0.9:
+        #     flow_pr = flow_pr.squeeze()
+        #     flow_pr = (flow_pr - flow_pr.min()) / (flow_pr.max() - flow_pr.min()) * 255.0
+        #     flow_pr = flow_pr.cpu().numpy().astype(np.uint8)
+        #     flow_pr = cv2.applyColorMap(flow_pr, cv2.COLORMAP_INFERNO)
             
-            if metrics['a1']>=0.95:
-                cv2.imwrite(os.path.join(outdir, '###AsymKD_Feas_'+str(val_id) + '_depth.png'), flow_pr)
-            else:
-                cv2.imwrite(os.path.join(outdir, 'AsymKD_Feas_'+str(val_id) + '_depth.png'), flow_pr)
+        #     if metrics['a1']>=0.95:
+        #         cv2.imwrite(os.path.join(outdir, '###AsymKD_Feas_'+str(val_id) + '_depth.png'), flow_pr)
+        #     else:
+        #         cv2.imwrite(os.path.join(outdir, 'AsymKD_Feas_'+str(val_id) + '_depth.png'), flow_pr)
 
-        outdir = './AsymKD_inference_input'
-        if metrics['a1']>=0.9:
-            input_image = (image1 - image1.min()) / (image1.max() - image1.min()) * 255.0
-            input_image = input_image.cpu().numpy().astype(np.uint8)
-            input_image = input_image[0].transpose(1, 2, 0)
-            input_image = cv2.cvtColor(input_image, cv2.COLOR_RGB2BGR)
-            if metrics['a1']>=0.95:
-                cv2.imwrite(os.path.join(outdir, '###AsymKD_Feas_'+str(val_id) + '_input.png'), input_image)
-            else:
-                cv2.imwrite(os.path.join(outdir, 'AsymKD_Feas_'+str(val_id) + '_input.png'), input_image)
+        # outdir = './AsymKD_inference_input'
+        # if metrics['a1']>=0.9:
+        #     input_image = (image1 - image1.min()) / (image1.max() - image1.min()) * 255.0
+        #     input_image = input_image.cpu().numpy().astype(np.uint8)
+        #     input_image = input_image[0].transpose(1, 2, 0)
+        #     input_image = cv2.cvtColor(input_image, cv2.COLOR_RGB2BGR)
+        #     if metrics['a1']>=0.95:
+        #         cv2.imwrite(os.path.join(outdir, '###AsymKD_Feas_'+str(val_id) + '_input.png'), input_image)
+        #     else:
+        #         cv2.imwrite(os.path.join(outdir, 'AsymKD_Feas_'+str(val_id) + '_input.png'), input_image)
         
         
     return calc_metric_avg(metrics_arr)
@@ -269,7 +269,7 @@ if __name__ == '__main__':
     segment_anything_predictor = SamPredictor(segment_anything)
 
     '''Depth Anything model load'''
-    encoder = 'vitb' # can also be 'vitb' or 'vitl'
+    encoder = 'vitl' # can also be 'vitb' or 'vitl'
     model = DepthAnything.from_pretrained('LiheYoung/depth_anything_{}14'.format(encoder)).to(DEVICE).eval()
     results = validate_kitti_for_depth_anything(model,segment_anything_predictor)
     print(f'Depth Anything evaluate result : {results}')    
@@ -282,7 +282,7 @@ if __name__ == '__main__':
     #         ImageEncoderViT = child
     #         break
     # model = AsymKD_DepthAnything(ImageEncoderViT = ImageEncoderViT).to(DEVICE)
-    # restore_ckpt = 'checkpoints/AsymKD.pth'
+    # restore_ckpt = 'checkpoints/AsymKD_VIT.pth'
     # #restore_ckpt = 'checkpoints/74994_epoch_AsymKD.pth'
     # if restore_ckpt is not None:
     #     assert restore_ckpt.endswith(".pth")
