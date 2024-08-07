@@ -129,7 +129,8 @@ def readDispKITTI(filename):
     #disp = getNormalizedDisp(disp)
     
     #print(disp.max(),disp.min())
-    valid = disp > 0.0
+    # valid = disp > 0.0
+    valid = (disp > 0.01) & (disp < 80.0)
     return disp, valid
 
 # Method taken from /n/fs/raft-depth/RAFT-Stereo/datasets/SintelStereo/sdk/python/sintel_io.py
@@ -152,15 +153,16 @@ def readDispFallingThings(file_name):
     return disp, valid
 
 def getNormalizedDisp(depth):
+    eps = 1e-3
     mask = depth > 0
     disp = np.zeros_like(depth, dtype=np.float32)
-    disp[mask] = 1.0 / depth[mask]
+    disp[mask] = 1.0 / (depth[mask] + eps)
     
     # normalize to 0~1
     if np.any(mask):
         disp_min = np.min(disp[mask])
         disp_max = np.max(disp[mask])
-        disp[mask] = (disp[mask] - disp_min) / (disp_max - disp_min)
+        disp[mask] = (disp[mask] - disp_min) / (disp_max - disp_min + eps)
 
     return disp
 
@@ -218,12 +220,13 @@ def readDispBlendedMVS(file_name):
         valid_depth = positive_depth[(positive_depth >= lower_bound) & (positive_depth <= upper_bound)]    
         mask = np.isin(depth, valid_depth)    
         disp = np.zeros_like(depth, dtype=np.float32)
-        disp[mask] = 1.0 / depth[mask]
+        eps = 1e-3
+        disp[mask] = 1.0 / (depth[mask] + eps)
 
         if np.any(mask):
             disp_min = np.min(disp[mask])
             disp_max = np.max(disp[mask])
-            disp[mask] = (disp[mask] - disp_min) / (disp_max - disp_min)
+            disp[mask] = (disp[mask] - disp_min) / (disp_max - disp_min + eps)
 
         return disp
 

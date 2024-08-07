@@ -14,9 +14,10 @@ from tqdm import tqdm
 import core.AsymKD_datasets as datasets
 from core.utils import InputPadder
 from segment_anything import  sam_model_registry, SamPredictor
-from AsymKD.dpt import AsymKD_DepthAnything
+from AsymKD.dpt import AsymKD_DepthAnything, AsymKD_DepthAnything_Infer
 import torch.nn as nn
 from depth_anything_for_evaluate.dpt import DepthAnything
+import matplotlib.pyplot as plt
 
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -61,14 +62,29 @@ def compute_errors(flow_gt, flow_preds, valid_arr):
         
         gt = gt.squeeze().cpu().numpy()
         pred = pred.squeeze().cpu().numpy()
-        valid = valid.squeeze().cpu()
+        valid = valid.bool().int().squeeze().cpu().numpy()
+        # print(gt.max(),gt.min())
+        # print(pred.max(),pred.min())
+
+        gt_height, gt_width = gt.shape
+        eval_mask = np.zeros(valid.shape)
+        eval_mask[int(0.40810811 * gt_height):int(0.99189189 * gt_height),
+                      int(0.03594771 * gt_width):int(0.96405229 * gt_width)] = 1
+        
+
+
+        valid_mask = np.logical_and(valid, eval_mask)
+        gt, pred= gt[valid_mask], pred[valid_mask]
+        
+        
+        #median scaling
+        ratio = np.median(gt) / np.median(pred)
+        pred *= ratio
+
         pred[pred < min_depth_eval] = min_depth_eval
         pred[pred > max_depth_eval] = max_depth_eval
         pred[np.isinf(pred)] = max_depth_eval
         pred[np.isnan(pred)] = min_depth_eval
-        # print(gt.max(),gt.min())
-        # print(pred.max(),pred.min())
-        gt, pred= gt[valid.bool()], pred[valid.bool()]
 
         thresh = np.maximum((gt / pred), (pred / gt))
         a1 = (thresh < 1.25).mean()
@@ -140,8 +156,13 @@ def validate_kitti(model, seg_any_predictor: SamPredictor, mixed_prec=False):
     torch.backends.cudnn.benchmark = True
 
     metrics_arr = []
+    pass_num = 0
     for val_id in range(len(val_dataset)):
         image1, image2, flow_gt, valid_gt = val_dataset[val_id]
+        # if(flow_gt.max()>80):
+        #     print(f'{val_id} pass')
+        #     pass_num += 1
+        #     continue
         image1 = image1[None].cuda()
         image2 = image2[None].cuda()
 
@@ -163,7 +184,7 @@ def validate_kitti(model, seg_any_predictor: SamPredictor, mixed_prec=False):
         assert flow_pr.shape == flow_gt.shape, (flow_pr.shape, flow_gt.shape)
 
 
-        flow_pr = flow_pr * 80
+        # flow_pr = flow_pr * 80
         # flow_pr = ((flow_pr - flow_pr.min()) / (flow_pr.max() - flow_pr.min())) * 255
         # flow_gt = ((flow_gt - flow_gt.min()) / (flow_gt.max() - flow_gt.min())) * 255
         metrics = compute_errors(flow_gt, flow_pr,valid_gt)
@@ -196,7 +217,26 @@ def validate_kitti(model, seg_any_predictor: SamPredictor, mixed_prec=False):
         #     else:
         #         cv2.imwrite(os.path.join(outdir, 'AsymKD_Feas_'+str(val_id) + '_input.png'), input_image)
         
-        
+        # 낮은 성능 디버그 코드
+        # if metrics['a1'] >= 0.9:
+        #     plt.imshow(flow_pr.squeeze().cpu().detach().numpy(), cmap='viridis')  # viridis 컬러 맵을 사용하여 시각화
+        #     plt.colorbar(label='Depth Value')  # 컬러 바 추가
+        #     plt.title('Depth Image Visualization')
+        #     plt.xlabel('X-axis')
+        #     plt.ylabel('Y-axis')
+        #     plt.savefig(f'./AsymKD_inference_result/###depth_image_visualization{val_id}.png')
+        #     plt.close()
+
+        #     plt.imshow(flow_gt.squeeze().cpu().detach().numpy(), cmap='viridis')  # viridis 컬러 맵을 사용하여 시각화
+        #     plt.colorbar(label='Depth Value')  # 컬러 바 추가
+        #     plt.title('Ground Truth Image Visualization')
+        #     plt.xlabel('X-axis')
+        #     plt.ylabel('Y-axis')
+        #     plt.savefig(f'./AsymKD_inference_input/###Ground_Truth_image_visualization{val_id}.png')
+        #     plt.close()
+
+
+    print(f'pass_num : {pass_num}')
     return calc_metric_avg(metrics_arr)
 
 
@@ -210,8 +250,14 @@ def validate_kitti_for_depth_anything(model, seg_any_predictor: SamPredictor, mi
     torch.backends.cudnn.benchmark = True
 
     metrics_arr = []
+    pass_num = 0
     for val_id in range(len(val_dataset)):
         image1, image2, flow_gt, valid_gt = val_dataset[val_id]
+        
+        # if(flow_gt.max()>80):
+        #     print(f'{val_id} pass')
+        #     pass_num += 1
+        #     continue
         image1 = image1[None].cuda()
         image2 = image2[None].cuda()
 
@@ -232,8 +278,8 @@ def validate_kitti_for_depth_anything(model, seg_any_predictor: SamPredictor, mi
         valid_gt = valid_gt.unsqueeze(0)
         assert flow_pr.shape == flow_gt.shape, (flow_pr.shape, flow_gt.shape)
         #print(flow_pr.min(),flow_pr.max())
-        flow_pr = ((flow_pr - flow_pr.min()) / (flow_pr.max() - flow_pr.min() + 1e-6)) * 80
-        # flow_gt = ((flow_gt - flow_gt.min()) / (flow_gt.max() - flow_gt.min())) * 255
+        # flow_pr = ((flow_pr - flow_pr.min()) / (flow_pr.max() - flow_pr.min() + 1e-6)) * 80
+        # flow_gt = ((flow_gt - flow_gt.min()) / (flow_gt.max() - flow_gt.min() + 1e-6))
         metrics = compute_errors(flow_gt, flow_pr,valid_gt)
         metrics_arr.append(metrics)
         if val_id < 9 or (val_id+1)%10 == 0:
@@ -262,18 +308,18 @@ def validate_kitti_for_depth_anything(model, seg_any_predictor: SamPredictor, mi
 
 if __name__ == '__main__':
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
-    #checkpoint = "sam_vit_b_01ec64.pth"
-    checkpoint = "sam_vit_l_0b3195.pth"
-    model_type = "vit_l"
+    checkpoint = "sam_vit_b_01ec64.pth"
+    # checkpoint = "sam_vit_l_0b3195.pth"
+    model_type = "vit_b"
     segment_anything = sam_model_registry[model_type](checkpoint=checkpoint).to(DEVICE).eval()
     segment_anything_predictor = SamPredictor(segment_anything)
 
-    '''Depth Anything model load'''
-    encoder = 'vitl' # can also be 'vitb' or 'vitl'
+    # '''Depth Anything model load'''
+    encoder = 'vits' # can also be 'vitb' or 'vitl'
     model = DepthAnything.from_pretrained('LiheYoung/depth_anything_{}14'.format(encoder)).to(DEVICE).eval()
     results = validate_kitti_for_depth_anything(model,segment_anything_predictor)
     print(f'Depth Anything evaluate result : {results}')    
-    print(f'#######Depth Anything evaluate result#############')    
+    print(f'#######{encoder} Depth Anything evaluate result#############')    
     for key in results.keys():
         print(f'{key} : {round(results[key], 3)}')
     
@@ -281,11 +327,11 @@ if __name__ == '__main__':
     # for child in segment_anything.children():
     #         ImageEncoderViT = child
     #         break
-    # model = AsymKD_DepthAnything(ImageEncoderViT = ImageEncoderViT).to(DEVICE)
-    # restore_ckpt = 'checkpoints/AsymKD_VIT.pth'
-    # #restore_ckpt = 'checkpoints/74994_epoch_AsymKD.pth'
+    # model = AsymKD_DepthAnything_Infer(ImageEncoderViT = ImageEncoderViT).to(DEVICE)
+    # restore_ckpt = '/home/wodon326/project/AsymKD_VIT_Adapter/checkpoints_new_loss/10000_AsymKD_new_loss.pth'
+    # # restore_ckpt = 'checkpoints/74994_epoch_AsymKD.pth'
     # if restore_ckpt is not None:
-    #     assert restore_ckpt.endswith(".pth")
+    #     # assert restore_ckpt.endswith(".pth")
     #     logging.info("Loading checkpoint...")
     #     checkpoint = torch.load(restore_ckpt, map_location=DEVICE)
     #     model__state_dict = model.state_dict()
@@ -303,15 +349,14 @@ if __name__ == '__main__':
     # model.eval()
     # AsymKD_metric = validate_kitti(model,segment_anything_predictor)
     # print(f'AsymKD {restore_ckpt} evaluate result : {AsymKD_metric}')    
+    # print(f'#######AsymKD {restore_ckpt} diff evaluate result#############')  
+    # for key in AsymKD_metric.keys():
+    #     print(f'{key} : {round(AsymKD_metric[key], 3)}')
+    #     # print(f'diff {key} : {round(Depth_Any_metric[key]-AsymKD_metric[key], 3)}')
 
-    # Depth_Any_metric = {'a1': 0.75005361982926, 'a2': 0.9294285799367217, 'a3': 0.9713775714947123, 'abs_rel': 0.16600794681347908, 'rmse': 7.895601497292518, 'log_10': 0.07704228786285966, 'rmse_log': 0.2627473225072026, 'silog': 21.697275741432478, 'sq_rel': 1.724362504966557}
+    # Depth_Any_metric = {'a1': 0.8610402657398244, 'a2': 0.9572192992174944, 'a3': 0.9794083171064192, 'abs_rel': 0.1272420384734869, 'rmse': 5.422292325198651, 'log_10': 0.0554339356161654, 'rmse_log': 0.21866457603871822, 'silog': 21.417029822075456, 'sq_rel': 1.0769053649902345}
     
     # print(f'#######AsymKD {restore_ckpt} evaluate result#############')    
     # for key in AsymKD_metric.keys():
-    #     print(f'{key} : {round(AsymKD_metric[key], 3)}')
-    #     #print(f'diff {key} : {round(Depth_Any_metric[key]-AsymKD_metric[key], 3)}')
-    # print(f'#######AsymKD {restore_ckpt} diff evaluate result#############')  
-    # for key in AsymKD_metric.keys():
-    #     #print(f'{key} : {round(AsymKD_metric[key], 3)}')
+    #     # print(f'{key} : {round(AsymKD_metric[key], 3)}')
     #     print(f'diff {key} : {round(Depth_Any_metric[key]-AsymKD_metric[key], 3)}')
-

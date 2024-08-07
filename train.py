@@ -17,6 +17,7 @@ import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from AsymKD_student import AsymKD_Student_DPTHead, AsymKD_Student_Encoder, AsymKD_Student
+from core.loss import GradL1Loss, ScaleAndShiftInvariantLoss
 
 from AsymKD_evaluate import *
 import core.AsymKD_datasets as datasets
@@ -163,29 +164,8 @@ def sequence_loss(flow_preds, flow_gt, valid, max_flow=700):
 
     # L1 loss
     flow_loss = F.l1_loss(flow_preds[valid.bool()], flow_gt[valid.bool()])
-
-    # for i in range(n_predictions):
-    #     assert not torch.isnan(flow_preds[i]).any() and not torch.isinf(flow_preds[i]).any()
-    #     # We adjust the loss_gamma so it is consistent for any number of RAFT-Stereo iterations
-    #     flow_preds[i] = flow_preds[i].squeeze(0)
-    #     i_loss = (flow_preds[i] - flow_gt[i]).abs()
-    #     assert i_loss.shape == valid[i].shape, [i_loss.shape, valid[i].shape, flow_gt.shape, flow_preds[i].shape]
-    #     flow_loss += i_loss[valid[i].bool()].mean()
-
-    # epe = torch.sum((flow_preds[-1] - flow_gt)**2, dim=1).sqrt()
-    # epe = epe.view(-1)[valid.view(-1)]
-
-    # metrics = {
-    #     'epe': epe.mean().item(),
-    #     '1px': (epe < 1).float().mean().item(),
-    #     '3px': (epe < 3).float().mean().item(),
-    #     '5px': (epe < 5).float().mean().item(),
-    # }
-
     metrics = compute_errors(flow_gt, flow_preds, valid)
 
-    # print("############")
-    # print(metrics)
     
     return flow_loss, metrics
 
@@ -273,7 +253,7 @@ def train(rank, world_size, args):
             break
         AsymKD_VIT = AsymKD_DepthAnything(ImageEncoderViT = ImageEncoderViT).to(rank)
         restore_ckpt = 'depth_anything_vitb14.pth'
-        #restore_ckpt = 'checkpoints/149981_epoch_AsymKD.pth'
+        # restore_ckpt = '/home/wodon326/project/AsymKD_VIT_Adapter/checkpoints/39000_AsymKD_new_loss.pth'
         if restore_ckpt is not None:
             assert restore_ckpt.endswith(".pth")
             logging.info("Loading checkpoint...")
@@ -291,7 +271,7 @@ def train(rank, world_size, args):
         
         if(rank == 0):
             print(new_state_dict.keys())
-        model = DDP(AsymKD_VIT, device_ids=[rank], find_unused_parameters=True)
+        model = DDP(AsymKD_VIT, device_ids=[rank])
         #print("Parameter Count: %d" % count_parameters(model))
         print("AsymKD_VIT Train")
         train_loader = datasets.fetch_dataloader(args,segment_anything_predictor, rank, world_size)
@@ -309,18 +289,43 @@ def train(rank, world_size, args):
         should_keep_training = True
         global_batch_num = 0
         epoch = 0
+
+        SSILoss = ScaleAndShiftInvariantLoss()
+        grad_loss = GradL1Loss()
+
+        
+        
         while should_keep_training:
 
             for i_batch, data_blob in enumerate(tqdm(train_loader)):
+                # if(pass_num>0):
+                #     pass_num -= 1
+                #     continue
                 optimizer.zero_grad()
                 depth_image, seg_image , flow, valid = [x.cuda() for x in data_blob]
                 assert model.training
                 flow_predictions = model(depth_image,seg_image)
                 assert model.training
-                loss, metrics = sequence_loss(flow_predictions, flow, valid)
+                # loss, metrics = sequence_loss(flow_predictions, flow, valid)
+
+                try:
+                    l_si, scaled_pred = SSILoss(
+                        flow_predictions, flow, mask=valid.bool(), interpolate=True, return_interpolated=True)
+                    loss = 0.85 * l_si
+                    # l_grad = grad_loss(scaled_pred, flow, mask=valid.bool().unsqueeze(1))
+                    # loss = loss + 0.001 * l_grad
+                except Exception as e:
+                    loss, _ = sequence_loss(flow_predictions, flow, valid)
+
+                    filename = 'Exception_catch.txt'
+                    a = open(filename, 'a')
+                    a.write(str(e)+'\n')
+                    a.close()
+
+
 
                 if(rank==0):
-                    logger.writer.add_scalar("live_loss", loss.item(), global_batch_num)
+                    logger.writer.add_scalar("live_loss", l_si.item(), global_batch_num)
                     logger.writer.add_scalar(f'learning_rate', optimizer.param_groups[0]['lr'], global_batch_num)
 
                     # inference visualization in tensorboard while training
@@ -333,10 +338,20 @@ def train(rank, world_size, args):
                     pred = flow_predictions[0].cpu().detach().numpy()
                     pred = ((pred - np.min(pred)) / (np.max(pred) - np.min(pred))) * 255
         
-                    logger.writer.add_image('RGB', rgb.astype(np.uint8))
-                    logger.writer.add_image('GT', gt.astype(np.uint8))
-                    logger.writer.add_image('Prediction', pred.astype(np.uint8))
+                    logger.writer.add_image('RGB', rgb.astype(np.uint8), global_batch_num)
+                    logger.writer.add_image('GT', gt.astype(np.uint8), global_batch_num)
+                    logger.writer.add_image('Prediction', pred.astype(np.uint8), global_batch_num)
+                    _ , metrics = sequence_loss(flow_predictions, flow, valid)
                     logger.push(metrics)
+
+                if(l_si is None):
+                    if rank == 0:
+                        save_path = Path('checkpoints_new_loss_no_smooth/%d_%s.pth' % (total_steps + 1, args.name))
+                        logging.info(f"Saving file {save_path.absolute()}")
+                        torch.save(model.state_dict(), save_path)
+                    assert l_si is None, f"loss is None {global_batch_num}"
+                
+
 
                 global_batch_num += 1
                 scaler.scale(loss).backward()
@@ -348,13 +363,13 @@ def train(rank, world_size, args):
                 scaler.update()
 
 
-                if total_steps % validation_frequency == validation_frequency - 1 and rank == 0:
-                    save_path = Path('checkpoints/%d_%s.pth' % (total_steps + 1, args.name))
-                    logging.info(f"Saving file {save_path.absolute()}")
-                    torch.save(model.state_dict(), save_path)
+                # if total_steps % validation_frequency == validation_frequency - 1 and rank == 0:
+                #     save_path = Path('checkpoints_new_loss_no_smooth/%d_%s.pth' % (total_steps + 1, args.name))
+                #     logging.info(f"Saving file {save_path.absolute()}")
+                #     torch.save(model.state_dict(), save_path)
 
-                if epoch >= 1 and total_steps % 1000 == 999 and rank == 0:
-                    save_path = Path('checkpoints/%d_%s.pth' % (total_steps + 1, args.name))
+                if epoch >= 0 and total_steps % 1000 == 999 and rank == 0:
+                    save_path = Path('checkpoints_new_loss_no_smooth/%d_%s.pth' % (total_steps + 1, args.name))
                     logging.info(f"Saving file {save_path.absolute()}")
                     torch.save(model.state_dict(), save_path)
 
@@ -372,13 +387,13 @@ def train(rank, world_size, args):
                     break
             epoch += 1     
             if len(train_loader) >= 10000:
-                save_path = Path('checkpoints/%d_epoch_%s.pth.gz' % (total_steps + 1, args.name))
+                save_path = Path('checkpoints_new_loss_no_smooth/%d_epoch_%s.pth' % (total_steps + 1, args.name))
                 logging.info(f"Saving file {save_path}")
                 torch.save(model.state_dict(), save_path)
 
         print("FINISHED TRAINING")
         logger.close()
-        PATH = 'checkpoints/%s.pth' % args.name
+        PATH = 'checkpoints_new_loss_no_smooth/%s.pth' % args.name
         torch.save(model.state_dict(), PATH)
 
         return PATH
@@ -387,7 +402,7 @@ def train(rank, world_size, args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--name', default='AsymKD', help="name your experiment")
+    parser.add_argument('--name', default='AsymKD_new_loss', help="name your experiment")
     parser.add_argument('--restore_ckpt', help="restore checkpoint")
     parser.add_argument('--mixed_precision', action='store_true', help='use mixed precision')
 
@@ -428,6 +443,6 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO,
                         format='%(asctime)s %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s')
 
-    Path("checkpoints").mkdir(exist_ok=True, parents=True)
+    Path("checkpoints_new_loss_no_smooth").mkdir(exist_ok=True, parents=True)
     world_size = torch.cuda.device_count()
     mp.spawn(train, args=(world_size,args,), nprocs=world_size, join=True)

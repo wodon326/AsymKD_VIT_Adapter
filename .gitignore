@@ -1,8 +1,12 @@
 *.pth
+*.pt
 *.pth.gz
 runs/
 AsymKD_inference_input/
 AsymKD_inference_result/
-Depth_Anything_inference_result/
+DepthAnything_inference_input/
+DepthAnything_inference_result/
+last_runs/
 debug*
-*.txt
+eval_result*
+*.npz

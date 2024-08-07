@@ -118,6 +118,8 @@ class StereoDataset(data.Dataset):
                 resized_valid = resized_valid>0
                 disp = (resized_disp,resized_valid)
 
+            valid = None
+
             if isinstance(disp, tuple):
                 disp, valid = disp
             else:
@@ -151,12 +153,12 @@ class StereoDataset(data.Dataset):
             
 
             flow = torch.from_numpy(flow).permute(2, 0, 1).float()
-            #valid = torch.from_numpy(valid)
+            valid = torch.from_numpy(valid)
             
-            if self.sparse:
-                valid = torch.from_numpy(valid)
-            else:
-                valid = (flow[0].abs() < 512) & (flow[1].abs() < 512)
+            # if self.sparse:
+            #     valid = torch.from_numpy(valid)
+            # else:
+            #     valid = (flow[0].abs() < 512) & (flow[1].abs() < 512)
             
             flow = flow[:1].to(self.DEVICE)
             
@@ -288,9 +290,9 @@ class FallingThings(StereoDataset):
             self.image_list += [ [img1, img2] ]
             self.disparity_list += [ disp ]
 
-class TartanAir(StereoDataset): #../../data
-    def __init__(self, seg_any_predictor:SamPredictor, aug_params=None, root='../../data/AsymKD', keywords=[]):
-        super().__init__(seg_any_predictor, aug_params, reader=frame_utils.readDispTartanAir)
+class TartanAir(StereoDataset): #../../datasets
+    def __init__(self, seg_any_predictor:SamPredictor, aug_params=None, root='../../datasets', keywords=[]):
+        super().__init__(seg_any_predictor, aug_params, sparse=True, reader=frame_utils.readDispTartanAir)
         assert os.path.exists(root)
         
         root = osp.join(root, 'TartanAir')
@@ -312,7 +314,7 @@ class TartanAir(StereoDataset): #../../data
                 quit()
 
 class KITTI(StereoDataset):
-    def __init__(self, seg_any_predictor:SamPredictor, aug_params=None, root='../../data/kitti/kitti2015', image_set='training'):
+    def __init__(self, seg_any_predictor:SamPredictor, aug_params=None, root='../../datasets/kitti/kitti2015', image_set='training'):
         super(KITTI, self).__init__(seg_any_predictor, aug_params, sparse=True, reader=frame_utils.readDispKITTI)
         assert os.path.exists(root)
 
@@ -333,8 +335,23 @@ class KITTI(StereoDataset):
                 print("Error : ", img2, disp2)
                 quit()
 
+class KITTI2012(StereoDataset):
+    def __init__(self, seg_any_predictor:SamPredictor, aug_params=None, root='../../datasets/kitti/kitti2012', image_set='training'):
+        super(KITTI2012, self).__init__(seg_any_predictor, aug_params, sparse=True, reader=frame_utils.readDispKITTI2012)
+        assert os.path.exists(root)
+
+        image_list = sorted(glob(os.path.join(root, image_set, 'colored_0/*_10.png')))
+        disp_list = sorted(glob(os.path.join(root, 'training', 'disp_occ/*_10.png')))
+
+        for idx, (img, disp) in enumerate(zip(image_list, disp_list)):
+            self.image_list += [ img ]
+            self.disparity_list += [ disp ]
+            if (img.replace('colored_0','disp_occ') != disp):
+                print("Error : ", img, disp)
+                quit()
+
 class MegaDepth(StereoDataset):
-    def __init__(self, seg_any_predictor:SamPredictor, aug_params=None, root='../../data/AsymKD/MegaDepth'):
+    def __init__(self, seg_any_predictor:SamPredictor, aug_params=None, root='../../datasets/MegaDepth'):
         super().__init__(seg_any_predictor, aug_params, sparse=True, reader=frame_utils.readDispMegaDepth)
         assert os.path.exists(root)
 
@@ -349,7 +366,7 @@ class MegaDepth(StereoDataset):
                 quit()
 
 class HRWSI(StereoDataset):
-    def __init__(self, seg_any_predictor:SamPredictor, aug_params=None, root='../../data/AsymKD/HRWSI'):
+    def __init__(self, seg_any_predictor:SamPredictor, aug_params=None, root='../../datasets/HRWSI'):
         super().__init__(seg_any_predictor, aug_params, sparse=True, reader=frame_utils.readDispHRWSI)
         assert os.path.exists(root)
 
@@ -364,7 +381,7 @@ class HRWSI(StereoDataset):
                 quit()
 
 class BlendedMVS(StereoDataset):
-    def __init__(self, seg_any_predictor:SamPredictor, aug_params=None, root='../../data/AsymKD/BlendedMVS'):
+    def __init__(self, seg_any_predictor:SamPredictor, aug_params=None, root='../../datasets/BlendedMVS'):
         super().__init__(seg_any_predictor, aug_params, sparse=True, reader=frame_utils.readDispBlendedMVS)
         assert os.path.exists(root)
 
@@ -447,7 +464,7 @@ def fetch_dataloader(args, seg_any_predictor:SamPredictor, rank, world_size):
             new_dataset = BlendedMVS(seg_any_predictor, aug_params)
             logging.info(f"Adding {len(new_dataset)} samples from BlendedMVS")
         elif dataset_name == 'kitti':
-            new_dataset = KITTI(seg_any_predictor, aug_params)
+            new_dataset = KITTI2012(seg_any_predictor, aug_params)
             logging.info(f"Adding {len(new_dataset)} samples from KITTI")
         elif dataset_name == 'sintel_stereo':
             new_dataset = SintelStereo(aug_params)*140
@@ -466,4 +483,3 @@ def fetch_dataloader(args, seg_any_predictor:SamPredictor, rank, world_size):
     #num_workers=int(os.environ.get('SLURM_CPUS_PER_TASK', 6))-2
     logging.info('Training with %d images' % len(train_dataset))
     return train_loader
-
