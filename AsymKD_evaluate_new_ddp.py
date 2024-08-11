@@ -379,7 +379,7 @@ def eval(rank, world_size, queue):
                 model__state_dict.update(new_state_dict)
                 model.load_state_dict(model__state_dict)
             if(rank == 0):
-                print(new_state_dict)
+                print(new_state_dict.keys())
             model.to(rank)
             model.eval()
             AsymKD_metric = validate_raw_kitti(model,segment_anything_predictor)
@@ -400,7 +400,7 @@ def eval(rank, world_size, queue):
                     print_str += f'diff {key} : {round(Depth_Any_metric[key]-AsymKD_metric[key], 3)}\n'
             
             print(print_str)
-            filename = 'eval_result_new.txt'
+            filename = 'eval_result_new_less_smooth.txt'
             with open(filename, 'a') as a:
                 # 새파일에 이어서 쓰기
                 a.write(f'{print_str}\n')
@@ -413,8 +413,8 @@ if __name__ == '__main__':
     manager = Manager()
     queue = manager.Queue()    
     start_num = 1
-    end_num = 187
+    end_num = 99
         
     for i in range(end_num,start_num-1,-1):
-        queue.put(f'checkpoints_new_loss/{i}000_AsymKD_new_loss.pth')
+        queue.put(f'checkpoints_new_loss_less_smooth/{i}000_AsymKD_new_loss.pth')
     mp.spawn(eval, args=(world_size,queue,), nprocs=world_size, join=True)
